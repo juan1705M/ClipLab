@@ -1,0 +1,6 @@
+__pycache__/
+data/
+tools/whisper/
+tools/*.zip
+*.bin
+*.db
