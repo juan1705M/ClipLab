@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClipLab</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f3f3f6;--ac:#6d4aff;--mu:#666;--bd:#ddd}
+@media(prefers-color-scheme:dark){:root{--bg:#141418;--fg:#eee;--card:#1f1f26;--mu:#999;--bd:#333}}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;gap:8px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--bd)}
+header b{margin-right:16px;font-size:18px}
+main{max-width:1200px;margin:0 auto;padding:20px}
+button,input{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg)}
+button{cursor:pointer}button.p,.tab.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+input[type=text]{width:100%}input[type=number]{width:80px}
+.bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.row{display:flex;gap:10px;align-items:center;padding:10px;background:var(--card);border-radius:8px;margin-bottom:8px;flex-wrap:wrap}
+.row b,.row span.u{flex:1;min-width:150px;overflow:hidden;text-overflow:ellipsis}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--bd);color:var(--mu)}
+video{width:100%;max-height:60vh;background:#000;border-radius:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.card{background:var(--card);border-radius:10px;padding:10px;font-size:13px}
+.card video{margin-bottom:8px}.mu{color:var(--mu)}
+[hidden]{display:none!important}
+.wrap{position:relative;display:inline-block;max-width:100%}
+.wrap video{width:auto;max-width:100%;max-height:60vh;display:block}
+.ov{position:absolute;inset:0;pointer-events:none}
+.bx{position:absolute;border:2px solid;font-size:11px;color:#fff;text-shadow:0 0 3px #000;padding:2px}
+select{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg)}
+.io{display:flex;gap:12px;align-items:flex-start}.io .wrap{flex:0 1 auto;min-width:0}.out{flex:none}
+@media(max-width:760px){.io{flex-wrap:wrap}}
+.out{height:min(60vh,480px);width:auto;border-radius:8px;background:#000}
+.bx b{position:absolute;top:-1px;left:-1px;font-size:11px;padding:1px 5px;color:#fff}
+.gp{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:#fff;color:#000;text-align:center;line-height:26px;cursor:move;pointer-events:auto;font-style:normal}
+.rs{position:absolute;right:-7px;bottom:-7px;width:14px;height:14px;background:#fff;border:2px solid #000;cursor:nwse-resize;pointer-events:auto}
+</style>
+</head>
+<body>
+<header><b>🎬 ClipLab</b>
+<button class="tab on" data-t="src">Fuentes</button><button class="tab" data-t="live">En vivo</button>
+<button class="tab" data-t="clips">Clips</button><button class="tab" data-t="set">Ajustes</button></header>
+<main>
+
+<section id="src">
+ <div class="bar"><input type="text" id="surl" placeholder="URL de un video de YouTube (VOD)">
+ <button class="p" onclick="addSrc()">Procesar</button></div>
+ <p class="mu">Descarga el video, sugiere momentos (volumen + mapa de calor de YouTube) y te deja marcar clips a mano.</p>
+ <div id="srcs"></div>
+ <div id="editor" hidden>
+  <div class="io"><div class="wrap" data-pan="1"><video id="pv" controls></video><div class="ov"></div></div><canvas class="out" width="270" height="480" hidden></canvas></div>
+  <div class="fmt" data-pan="1" style="margin-top:10px"></div>
+  <div class="bar" style="margin-top:10px">
+   <button onclick="mark('i')">Marcar inicio</button><input type="number" id="ini" step="0.1" value="0">
+   <button onclick="mark('f')">Marcar fin</button><input type="number" id="fin" step="0.1" value="0">
+   <button class="p" onclick="manual()">Crear clip</button><span id="msg1" class="mu"></span></div>
+  <h3>Momentos sugeridos</h3><div id="sug"></div>
+ </div>
+</section>
+
+<section id="live" hidden>
+ <div class="bar"><input type="text" id="lurl" placeholder="Canal de Twitch / Kick (o directo de YouTube)">
+ <button class="p" onclick="startLive()">Capturar directo</button></div>
+ <p class="mu">Guarda un buffer de los últimos 5 min. El preview sale de ese mismo buffer (≈10-15 s de retraso).</p>
+ <div id="lives"></div>
+ <div id="livebox" hidden>
+  <div class="io"><div class="wrap"><video id="lv" controls></video><div class="ov"></div></div><canvas class="out" width="270" height="480" hidden></canvas></div>
+  <div class="fmt" style="margin-top:10px"></div>
+  <input type="range" id="tl" step="0.1" style="width:100%;margin-top:8px">
+  <div class="bar"><button onclick="goLive()">⏭ Ir al directo</button>
+   <button onclick="markL('S')">Marcar inicio (I)</button><button onclick="nudge('S',-1)">−1s</button><button onclick="nudge('S',1)">+1s</button>
+   <button onclick="markL('E')">Marcar fin (O)</button><button onclick="nudge('E',-1)">−1s</button><button onclick="nudge('E',1)">+1s</button></div>
+  <div class="bar"><span id="mk" class="mu">Sin marcas</span><button onclick="prevL()">▶ Ver selección</button>
+   <button class="p" onclick="clipL()">✂️ Crear clip (Enter)</button><span id="msg2" class="mu"></span></div>
+ </div>
+</section>
+
+<section id="clips" hidden><div id="cl" class="grid"></div></section>
+
+<section id="set" hidden>
+ <div class="row">Retraso del directo (segundos) <input type="number" id="s_delay" min="30" max="300"></div>
+  <button class="p" onclick="saveSet()">Guardar</button> <span id="msg3" class="mu"></span>
+</section>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api=async(p,m='GET',b)=>{const r=await fetch('/api'+p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+ if(!r.ok){let d;try{d=(await r.json()).detail}catch{}throw new Error(d||r.status)}return r.json()};
+const S=()=>{let s={};try{s=JSON.parse(localStorage.getItem('cl')||'{}')}catch{}return{delay:90,...s}};
+const fmt=t=>`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
+let cur=null,curLive=null,hls=null;
+
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x==b));
+ ['src','live','clips','set'].forEach(id=>$('#'+id).hidden=id!=b.dataset.t);
+ if(b.dataset.t=='clips')loadClips();if(b.dataset.t=='live')loadLive();if(b.dataset.t=='set')loadSet();});
+
+// --- Fuentes (YouTube VOD)
+async function addSrc(){const url=$('#surl').value.trim();if(!url)return;
+ try{await api('/sources','POST',{url});$('#surl').value='';loadSources()}catch(e){alert(e.message)}}
+async function loadSources(){const l=await api('/sources');
+ $('#srcs').innerHTML=l.map(s=>`<div class="row"><b>${esc(s.title||s.url)}</b><span class="tag">${esc(s.status)}</span>
+  ${s.status=='listo'?`<button onclick="openSrc('${s.id}')">Abrir</button>`:''}</div>`).join('');
+ if(l.some(s=>s.status=='descargando'))setTimeout(loadSources,3000);}
+async function openSrc(id){F.kf=[];cur=(await api('/sources')).find(s=>s.id==id);
+ $('#editor').hidden=false;$('#pv').src='/media/sources/'+cur.file;
+ $('#sug').innerHTML=cur.suggestions.length?cur.suggestions.map((s,i)=>`<div class="row">
+  <b>${fmt(s.start)} → ${fmt(s.end)}</b><span class="tag">score ${s.score}</span>
+  <button onclick="seek(${s.start})">Ver</button>
+  <button class="p" onclick="auto(${i})">Crear clip</button></div>`).join(''):'<p class="mu">Sin sugerencias.</p>';}
+const seek=t=>{$('#pv').currentTime=t;$('#pv').play()};
+function mark(k){$(k=='i'?'#ini':'#fin').value=$('#pv').currentTime.toFixed(1)}
+async function mk(b,msg){$(msg).textContent='Cortando…';
+ try{await api('/clips','POST',{source:cur.id,...fmtBody(b.start),...b});$(msg).textContent='✅ Clip creado (pestaña Clips)'}
+ catch(e){$(msg).textContent='❌ '+e.message}}
+const manual=()=>mk({start:+$('#ini').value,end:+$('#fin').value,mode:'manual'},'#msg1');
+const auto=i=>{const s=cur.suggestions[i];mk({start:s.start,end:s.end,score:s.score,mode:'auto'},'#msg1')};
+
+// --- En vivo
+async function startLive(){const url=$('#lurl').value.trim();if(!url)return;
+ try{const r=await api('/live','POST',{url});$('#lurl').value='';await loadLive();setTimeout(()=>watch(r.id),8000)}catch(e){alert(e.message)}}
+async function loadLive(){const l=await api('/live');
+ $('#lives').innerHTML=l.map(x=>`<div class="row"><span class="u">${esc(x.url)}</span>
+  <span class="tag">${x.platform} · ${x.alive?'capturando':'detenido'}</span>
+  <button onclick="watch('${x.id}')">Ver</button><button onclick="stopLive('${x.id}')">Parar</button></div>`).join('');}
+let mks={S:null,E:null},pv_;
+async function watch(id){curLive=id;mks={S:null,E:null};F.kf=[];$('#livebox').hidden=false;const u=`/media/live/${id}/live.m3u8`,need=S().delay;
+ if(hls)hls.destroy();hls=null;
+ for(;;){let have=0;try{have=[...(await(await fetch(u)).text()).matchAll(/#EXTINF:([\d.]+)/g)].reduce((a,m)=>a+ +m[1],0)}catch{}
+  if(curLive!=id)return;if(have>=need)break;
+  $('#msg2').textContent=`Llenando el buffer de retraso: ${Math.round(have)}/${need} s…`;await new Promise(r=>setTimeout(r,2000))}
+ $('#msg2').textContent='';
+ hls=new Hls({liveSyncDuration:need,liveMaxLatencyDuration:7200,maxLiveSyncPlaybackRate:1,manifestLoadingMaxRetry:10});
+ hls.loadSource(u);hls.attachMedia($('#lv'));$('#lv').play().catch(()=>{});}
+const edge=()=>{const s=$('#lv').seekable;return s.length?s.end(s.length-1):0};
+const lo=()=>{const s=$('#lv').seekable;return s.length?s.start(0):0};
+function ref(t){const fr=hls&&hls.levels[0]&&hls.levels[0].details?hls.levels[0].details.fragments:[];
+ const f=fr.find(f=>t>=f.start&&t<f.start+f.duration);if(!f)throw new Error('Esa parte ya salió del buffer');
+ return{seq:+f.url.match(/\/s(\d+)\.ts/)[1],off:t-f.start}}
+async function markL(k){const t=$('#lv').currentTime;mks[k]=t;
+ if(k=='S'){try{await api(`/live/${curLive}/pin`,'POST',ref(t))}catch(e){$('#msg2').textContent='❌ '+e.message}}shw()}
+const nudge=(k,d)=>{if(mks[k]!=null){mks[k]=Math.max(lo(),mks[k]+d);shw()}};
+const rel=t=>t==null?'—':'−'+fmt(Math.max(0,edge()-t));
+const shw=()=>{$('#mk').textContent=mks.S==null&&mks.E==null?'Sin marcas':`Inicio ${rel(mks.S)} · Fin ${rel(mks.E)}${mks.S!=null&&mks.E!=null?' · '+Math.round(mks.E-mks.S)+' s':''} (respecto al directo)`};
+const goLive=()=>{$('#lv').currentTime=Math.max(lo(),edge()-10)};
+function prevL(){if(mks.S==null||mks.E==null)return;const v=$('#lv');v.currentTime=mks.S;v.play();clearInterval(pv_);
+ pv_=setInterval(()=>{if(v.currentTime>=mks.E){v.pause();clearInterval(pv_)}},200)}
+async function clipL(){if(mks.S==null||mks.E==null||mks.E<=mks.S){$('#msg2').textContent='Marca inicio y fin (el fin después del inicio)';return}
+ $('#msg2').textContent='Creando clip…';
+ try{await api(`/live/${curLive}/clip`,'POST',{start:ref(mks.S),end:ref(mks.E),...fmtBody(mks.S)});
+  $('#msg2').textContent='✅ Clip guardado (pestaña Clips)';mks={S:null,E:null}}catch(e){$('#msg2').textContent='❌ '+e.message}}
+async function stopLive(id){await api('/live/'+id,'DELETE');if(curLive==id){$('#livebox').hidden=true;if(hls)hls.destroy();curLive=null}loadLive()}
+
+
+// --- Clips
+async function loadClips(){const l=await api('/clips');
+ $('#cl').innerHTML=l.length?l.map(c=>`<div class="card"><video controls preload="metadata" src="/media/clips/${c.file}"></video>
+  <div><b>${c.mode}</b> · ${fmt(c.start)}–${fmt(c.end)} ${c.score?'· score '+c.score:''}</div>
+  <div class="mu">${esc(c.url)}<br>${c.created}</div>
+  <div class="bar" style="margin:8px 0 0"><a href="/media/clips/${c.file}" download><button>Descargar</button></a>
+  <button onclick="delClip('${c.id}')">Borrar</button></div></div>`).join(''):'<p class="mu">Aún no hay clips.</p>';}
+async function delClip(id){await api('/clips/'+id,'DELETE');loadClips()}
+
+// --- Ajustes
+function loadSet(){const s=S();$('#s_delay').value=s.delay}
+function saveSet(){localStorage.setItem('cl',JSON.stringify({delay:+$('#s_delay').value||90}));$('#msg3').textContent='Guardado ✅'}
+
+// --- Formato del clip (compartido entre VOD y directo)
+const F=(()=>{let s={};try{s=JSON.parse(localStorage.getItem('fmt')||'{}')}catch{}
+ const f={layout:'original',swap:false,cam_on:true,cam_pos:'top',cam_h:.3,cam:[.75,0,.22],gz:1,...s,kf:[]};
+ if(!['original','template','blur','split'].includes(f.layout))f.layout='template';
+ if(!f.cam||f.cam.length!=3)f.cam=[.75,0,.22];return f})();
+const fmtBody=(st=0)=>({layout:F.layout,swap:F.swap,cam_on:F.cam_on,cam_pos:F.cam_pos,cam_h:F.cam_h,cam:F.cam,gz:F.gz,gk:F.kf.map(k=>[k[0]-st,k[1],k[2]])});
+const panel=()=>`<div class="bar"><label>Formato <select data-k="layout">
+ <option value="original">Original (horizontal)</option><option value="template">Vertical con plantilla (cámara + juego)</option>
+ <option value="blur">Vertical con fondo difuminado</option><option value="split">Vertical mitad y mitad</option></select></label></div>
+ <div class="bar opt" data-for="split"><label><input type="checkbox" data-k="swap"> Derecha arriba, izquierda abajo</label></div>
+ <div class="opt" data-for="template">
+  <div class="bar"><label><input type="checkbox" data-k="cam_on"> El streamer tiene cámara</label>
+   <span class="cm bar" style="margin:0"><label>Cámara <select data-k="cam_pos"><option value="top">arriba</option><option value="bottom">abajo</option></select></label>
+   <label>Alto <input type="range" min="20" max="40" data-k="cam_h" data-s="100"></label></span></div>
+  <div class="bar"><label>Zoom del juego <input type="range" min="40" max="100" data-k="gz" data-s="100"></label>
+   <button onclick="clearKf()">Borrar puntos</button><span class="mu gi"></span></div>
+  <div class="mu" style="margin-bottom:8px">Arrastra ✥ del recuadro verde (juego) en el instante que quieras: cada arrastre fija un punto de movimiento. Naranja = cámara (✥ mover, esquina = tamaño).</div></div>`;
+const vr=()=>[$('#pv'),$('#lv')].map(v=>v.videoWidth/v.videoHeight).find(Boolean)||16/9;
+const geo=()=>{const camH=F.cam_on?Math.round(F.cam_h*1920/2)*2:0,gh=1920-camH;return{camH,gh,AC:camH?1080/camH:0,AG:1080/gh}};
+const pos=t=>{const k=F.kf;if(!k.length)return[.5,.5];if(t<=k[0][0])return k[0].slice(1);
+ for(let i=1;i<k.length;i++)if(t<=k[i][0]){const a=k[i-1],b=k[i],u=(t-a[0])/Math.max(b[0]-a[0],1e-6);return[a[1]+(b[1]-a[1])*u,a[2]+(b[2]-a[2])*u]}
+ return k[k.length-1].slice(1)};
+function setKf(t,cx,cy){F.kf=F.kf.filter(k=>Math.abs(k[0]-t)>.2);F.kf.push([t,cx,cy]);F.kf.sort((a,b)=>a[0]-b[0]);sync()}
+const clearKf=()=>{F.kf=[];sync()};
+const bx=(x,y,w,h,c,t,g)=>`<div class="bx" style="left:${x*100}%;top:${y*100}%;width:${w*100}%;height:${h*100}%;border-color:${c}"><b style="background:${c}">${t}</b>${g||''}</div>`;
+function renderOv(){document.querySelectorAll('.io').forEach(io=>{const v=io.querySelector('video'),r=(v.videoWidth/v.videoHeight)||16/9,g=geo();let h='';
+ if(F.layout=='template'){const p=pos(v.currentTime||0),ww=Math.min(F.gz*g.AG/r,1),wh=F.gz;
+  if(g.camH){const[x,y,w]=F.cam;h+=bx(x,y,w,w*r/g.AC,'#ff9f1a','cámara','<i class="gp" data-dg="cam" style="left:50%;top:50%">✥</i><i class="rs" data-dg="camr"></i>')}
+  h+=bx(Math.min(Math.max(p[0]-ww/2,0),1-ww),Math.min(Math.max(p[1]-wh/2,0),1-wh),ww,wh,'#2ea043',`juego 1080×${g.gh}`,'<i class="gp" data-dg="game" style="left:50%;top:50%">✥</i>')}
+ if(F.layout=='split')h='<div class="bx" style="left:50%;top:0;height:100%;width:0;border-color:#fff"></div>';
+ io.querySelector('.ov').innerHTML=h})}
+function drawOut(){document.querySelectorAll('.io').forEach(io=>{const v=io.querySelector('video'),c=io.querySelector('canvas'),on=F.layout=='template';c.hidden=!on;
+ if(!on||!v.videoWidth)return;const x=c.getContext('2d'),g=geo(),W=v.videoWidth,H=v.videoHeight,p=pos(v.currentTime||0),k=.25;
+ if(g.camH){const[a,b,w]=F.cam,sw=w*W;x.drawImage(v,a*W,b*H,sw,sw/g.AC,0,F.cam_pos=='top'?0:(1920-g.camH)*k,270,g.camH*k)}
+ const sh=F.gz*H,sw=Math.min(sh*g.AG,W);
+ x.drawImage(v,Math.min(Math.max(p[0]*W-sw/2,0),W-sw),Math.min(Math.max(p[1]*H-sh/2,0),H-sh),sw,sh,0,g.camH&&F.cam_pos=='top'?g.camH*k:0,270,g.gh*k)})}
+function sync(){const g=geo();
+ if(g.camH){const k=vr()/g.AC;let[x,y,w]=F.cam;w=Math.min(Math.max(w,.05),1/k);F.cam=[Math.min(Math.max(x,0),1-w),Math.min(Math.max(y,0),1-w*k),w]}
+ document.querySelectorAll('.fmt').forEach(p=>{
+  p.querySelectorAll('[data-k]').forEach(i=>{const v=F[i.dataset.k];if(i.type=='checkbox')i.checked=v;else if(i.dataset.s)i.value=v*i.dataset.s;else i.value=v});
+  p.querySelectorAll('.opt').forEach(o=>o.hidden=o.dataset.for!=F.layout);
+  p.querySelectorAll('.cm').forEach(o=>o.hidden=!F.cam_on);
+  p.querySelectorAll('.gi').forEach(o=>o.textContent=(g.camH?`cámara 1080×${g.camH} · `:'')+`juego 1080×${g.gh} · ${F.kf.length} punto(s) de movimiento`)});
+ renderOv();try{localStorage.setItem('fmt',JSON.stringify({...F,kf:[]}))}catch{}}
+document.addEventListener('input',e=>{const t=e.target,k=t.dataset&&t.dataset.k;if(!k)return;
+ F[k]=t.type=='checkbox'?t.checked:t.dataset.s?t.value/t.dataset.s:t.value;sync()});
+let dg=null;
+document.addEventListener('mousedown',e=>{const g=e.target.closest&&e.target.closest('[data-dg]');if(!g)return;
+ const o=g.closest('.ov');dg={k:g.dataset.dg,r:o.getBoundingClientRect(),v:o.parentNode.querySelector('video')};e.preventDefault()});
+document.addEventListener('mousemove',e=>{if(!dg)return;
+ const px=Math.min(Math.max((e.clientX-dg.r.left)/dg.r.width,0),1),py=Math.min(Math.max((e.clientY-dg.r.top)/dg.r.height,0),1),r=vr(),A=geo(),[x,y,w]=F.cam;
+ if(dg.k=='game')setKf(dg.v.currentTime||0,px,py);
+ else if(dg.k=='cam'){const h=w*r/A.AC;F.cam=[Math.min(Math.max(px-w/2,0),1-w),Math.min(Math.max(py-h/2,0),1-h),w];sync()}
+ else{F.cam=[x,y,Math.max(px-x,.05)];sync()}});
+document.addEventListener('mouseup',()=>{dg=null});
+document.querySelectorAll('.fmt').forEach(el=>el.innerHTML=panel());
+['#pv','#lv'].forEach(s=>$(s).addEventListener('loadedmetadata',sync));
+setInterval(()=>{renderOv();drawOut()},80);
+// --- Directo: volumen recordado, línea de tiempo y atajos
+const lv=$('#lv'),tl=$('#tl');
+try{lv.volume=+localStorage.getItem('vol')||1}catch{}
+lv.onvolumechange=()=>{try{if(!lv.muted)localStorage.setItem('vol',lv.volume)}catch{}};
+setInterval(()=>{if(!curLive||!hls)return;tl.min=lo();tl.max=edge();if(!tl.dataset.d)tl.value=lv.currentTime;shw()},500);
+tl.oninput=()=>{tl.dataset.d=1;lv.currentTime=+tl.value};tl.onchange=()=>delete tl.dataset.d;
+document.addEventListener('keydown',e=>{const t=e.target;
+ if(!curLive||$('#live').hidden||/^(text|number)$/.test(t.type)||t.tagName=='SELECT')return;
+ const k=e.key.toLowerCase();if(k=='i')markL('S');else if(k=='o')markL('E');else if(e.key=='Enter'&&t.tagName!='BUTTON')clipL()});
+sync();
+loadSources();
+</script>
+</body>
+</html>
